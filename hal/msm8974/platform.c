@@ -246,6 +246,7 @@ static const char * const device_table[SND_DEVICE_MAX] = {
     [SND_DEVICE_IN_VOICE_REC_MIC_NS] = "voice-rec-mic",
     [SND_DEVICE_IN_VOICE_REC_DMIC_STEREO] = "voice-rec-dmic-ef",
     [SND_DEVICE_IN_VOICE_REC_DMIC_FLUENCE] = "voice-rec-dmic-ef-fluence",
+    [SND_DEVICE_IN_VOICE_REC_HEADSET_MIC] = "headset-mic",
 
     [SND_DEVICE_IN_VOICE_RX] = "voice-rx",
 
@@ -329,6 +330,7 @@ static int acdb_device_table[SND_DEVICE_MAX] = {
     [SND_DEVICE_IN_VOICE_REC_MIC_NS] = 113,
     [SND_DEVICE_IN_VOICE_REC_DMIC_STEREO] = 35,
     [SND_DEVICE_IN_VOICE_REC_DMIC_FLUENCE] = 43,
+    [SND_DEVICE_IN_VOICE_REC_HEADSET_MIC] = 8,
 
     [SND_DEVICE_IN_VOICE_RX] = 44,
 
@@ -419,6 +421,7 @@ static const struct name_to_index snd_device_name_index[SND_DEVICE_MAX] = {
     {TO_NAME_INDEX(SND_DEVICE_IN_VOICE_REC_MIC_NS)},
     {TO_NAME_INDEX(SND_DEVICE_IN_VOICE_REC_DMIC_STEREO)},
     {TO_NAME_INDEX(SND_DEVICE_IN_VOICE_REC_DMIC_FLUENCE)},
+    {TO_NAME_INDEX(SND_DEVICE_IN_VOICE_REC_HEADSET_MIC)},
 
     {TO_NAME_INDEX(SND_DEVICE_IN_THREE_MIC)},
     {TO_NAME_INDEX(SND_DEVICE_IN_QUAD_MIC)},
@@ -1707,6 +1710,40 @@ snd_device_t platform_get_output_snd_device(void *platform, audio_devices_t devi
         goto exit;
     }
 
+    if (popcount(devices) == 2) {
+        if (devices == (AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
+                        AUDIO_DEVICE_OUT_SPEAKER) ||
+                devices == (AUDIO_DEVICE_OUT_WIRED_HEADSET |
+                            AUDIO_DEVICE_OUT_SPEAKER)) {
+            snd_device = SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES;
+        } else if (devices == (AUDIO_DEVICE_OUT_LINE |
+                               AUDIO_DEVICE_OUT_SPEAKER)) {
+            snd_device = SND_DEVICE_OUT_SPEAKER_AND_LINE;
+        } else if (devices == (AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
+                               AUDIO_DEVICE_OUT_SPEAKER_SAFE) ||
+                   devices == (AUDIO_DEVICE_OUT_WIRED_HEADSET |
+                               AUDIO_DEVICE_OUT_SPEAKER_SAFE)) {
+            snd_device = SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES;
+        } else if (devices == (AUDIO_DEVICE_OUT_LINE |
+                               AUDIO_DEVICE_OUT_SPEAKER_SAFE)) {
+            snd_device = SND_DEVICE_OUT_SPEAKER_SAFE_AND_LINE;
+        } else if (devices == (AUDIO_DEVICE_OUT_AUX_DIGITAL |
+                               AUDIO_DEVICE_OUT_SPEAKER)) {
+            snd_device = SND_DEVICE_OUT_SPEAKER_AND_HDMI;
+        } else {
+            ALOGE("%s: Invalid combo device(%#x)", __func__, devices);
+            goto exit;
+        }
+        if (snd_device != SND_DEVICE_NONE) {
+            goto exit;
+        }
+    }
+
+    if (popcount(devices) != 1) {
+        ALOGE("%s: Invalid output devices(%#x)", __func__, devices);
+        goto exit;
+    }
+
     if (voice_is_in_call(adev) || adev->enable_voicerx) {
         if (devices & AUDIO_DEVICE_OUT_WIRED_HEADPHONE ||
             devices & AUDIO_DEVICE_OUT_WIRED_HEADSET ||
@@ -1747,40 +1784,6 @@ snd_device_t platform_get_output_snd_device(void *platform, audio_devices_t devi
         if (snd_device != SND_DEVICE_NONE) {
             goto exit;
         }
-    }
-
-    if (popcount(devices) == 2) {
-        if (devices == (AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
-                        AUDIO_DEVICE_OUT_SPEAKER) ||
-                devices == (AUDIO_DEVICE_OUT_WIRED_HEADSET |
-                            AUDIO_DEVICE_OUT_SPEAKER)) {
-            snd_device = SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES;
-        } else if (devices == (AUDIO_DEVICE_OUT_LINE |
-                               AUDIO_DEVICE_OUT_SPEAKER)) {
-            snd_device = SND_DEVICE_OUT_SPEAKER_AND_LINE;
-        } else if (devices == (AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
-                               AUDIO_DEVICE_OUT_SPEAKER_SAFE) ||
-                   devices == (AUDIO_DEVICE_OUT_WIRED_HEADSET |
-                               AUDIO_DEVICE_OUT_SPEAKER_SAFE)) {
-            snd_device = SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES;
-        } else if (devices == (AUDIO_DEVICE_OUT_LINE |
-                               AUDIO_DEVICE_OUT_SPEAKER_SAFE)) {
-            snd_device = SND_DEVICE_OUT_SPEAKER_SAFE_AND_LINE;
-        } else if (devices == (AUDIO_DEVICE_OUT_AUX_DIGITAL |
-                               AUDIO_DEVICE_OUT_SPEAKER)) {
-            snd_device = SND_DEVICE_OUT_SPEAKER_AND_HDMI;
-        } else {
-            ALOGE("%s: Invalid combo device(%#x)", __func__, devices);
-            goto exit;
-        }
-        if (snd_device != SND_DEVICE_NONE) {
-            goto exit;
-        }
-    }
-
-    if (popcount(devices) != 1) {
-        ALOGE("%s: Invalid output devices(%#x)", __func__, devices);
-        goto exit;
     }
 
     if (devices & AUDIO_DEVICE_OUT_WIRED_HEADPHONE ||
@@ -1934,8 +1937,11 @@ snd_device_t platform_get_input_snd_device(void *platform, audio_devices_t out_d
                 else
                     snd_device = SND_DEVICE_IN_VOICE_REC_MIC;
             }
+        } else if (in_device & AUDIO_DEVICE_IN_WIRED_HEADSET) {
+            snd_device = SND_DEVICE_IN_VOICE_REC_HEADSET_MIC;
         }
-    } else if (source == AUDIO_SOURCE_VOICE_COMMUNICATION) {
+    } else if (source == AUDIO_SOURCE_VOICE_COMMUNICATION ||
+            mode == AUDIO_MODE_IN_COMMUNICATION) {
         if (out_device & (AUDIO_DEVICE_OUT_SPEAKER | AUDIO_DEVICE_OUT_SPEAKER_SAFE))
             in_device = AUDIO_DEVICE_IN_BACK_MIC;
         if (adev->active_input) {
@@ -2404,6 +2410,67 @@ done:
     return ret;
 }
 
+#define DEFAULT_NOMINAL_SPEAKER_GAIN 20
+int ramp_speaker_gain(struct audio_device *adev, bool ramp_up, int target_ramp_up_gain) {
+    // backup_gain: gain to try to set in case of an error during ramp
+    int start_gain, end_gain, step, backup_gain, i;
+    bool error = false;
+    const struct mixer_ctl *ctl;
+    const char *mixer_ctl_name_gain_left = "Left Speaker Gain";
+    const char *mixer_ctl_name_gain_right = "Right Speaker Gain";
+    struct mixer_ctl *ctl_left = mixer_get_ctl_by_name(adev->mixer, mixer_ctl_name_gain_left);
+    struct mixer_ctl *ctl_right = mixer_get_ctl_by_name(adev->mixer, mixer_ctl_name_gain_right);
+    if (!ctl_left || !ctl_right) {
+        ALOGE("%s: Could not get ctl for mixer cmd - %s or %s, not applying speaker gain ramp",
+                      __func__, mixer_ctl_name_gain_left, mixer_ctl_name_gain_right);
+        return -EINVAL;
+    } else if ((mixer_ctl_get_num_values(ctl_left) != 1)
+            || (mixer_ctl_get_num_values(ctl_right) != 1)) {
+        ALOGE("%s: Unexpected num values for mixer cmd - %s or %s, not applying speaker gain ramp",
+                              __func__, mixer_ctl_name_gain_left, mixer_ctl_name_gain_right);
+        return -EINVAL;
+    }
+    if (ramp_up) {
+        start_gain = 0;
+        end_gain = target_ramp_up_gain > 0 ? target_ramp_up_gain : DEFAULT_NOMINAL_SPEAKER_GAIN;
+        step = +1;
+        backup_gain = end_gain;
+    } else {
+        // using same gain on left and right
+        const int left_gain = mixer_ctl_get_value(ctl_left, 0);
+        start_gain = left_gain > 0 ? left_gain : DEFAULT_NOMINAL_SPEAKER_GAIN;
+        end_gain = 0;
+        step = -1;
+        backup_gain = start_gain;
+    }
+    for (i = start_gain ; i != (end_gain + step) ; i += step) {
+        //ALOGV("setting speaker gain to %d", i);
+        if (mixer_ctl_set_value(ctl_left, 0, i)) {
+            ALOGE("%s: error setting %s to %d during gain ramp",
+                    __func__, mixer_ctl_name_gain_left, i);
+            error = true;
+            break;
+        }
+        if (mixer_ctl_set_value(ctl_right, 0, i)) {
+            ALOGE("%s: error setting %s to %d during gain ramp",
+                    __func__, mixer_ctl_name_gain_right, i);
+            error = true;
+            break;
+        }
+        usleep(1000);
+    }
+    if (error) {
+        // an error occured during the ramp, let's still try to go back to a safe volume
+        if (mixer_ctl_set_value(ctl_left, 0, backup_gain)) {
+            ALOGE("%s: error restoring left gain to %d", __func__, backup_gain);
+        }
+        if (mixer_ctl_set_value(ctl_right, 0, backup_gain)) {
+            ALOGE("%s: error restoring right gain to %d", __func__, backup_gain);
+        }
+    }
+    return start_gain;
+}
+
 int platform_swap_lr_channels(struct audio_device *adev, bool swap_channels)
 {
     // only update if there is active pcm playback on speaker
@@ -2417,14 +2484,28 @@ int platform_swap_lr_channels(struct audio_device *adev, bool swap_channels)
         list_for_each(node, &adev->usecase_list) {
             usecase = node_to_item(node, struct audio_usecase, list);
             if (usecase->type == PCM_PLAYBACK &&
-                usecase->stream.out->devices & AUDIO_DEVICE_OUT_SPEAKER) {
-                const char *mixer_path;
-                if (swap_channels) {
-                    mixer_path = platform_get_snd_device_name(SND_DEVICE_OUT_SPEAKER_REVERSE);
-                    audio_route_apply_and_update_path(adev->audio_route, mixer_path);
+                    usecase->stream.out->devices & AUDIO_DEVICE_OUT_SPEAKER) {
+                /*
+                 * If acdb tuning is different for SPEAKER_REVERSE, it is must
+                 * to perform device switch to disable the current backend to
+                 * enable it with new acdb data.
+                 */
+                if (acdb_device_table[SND_DEVICE_OUT_SPEAKER] !=
+                    acdb_device_table[SND_DEVICE_OUT_SPEAKER_REVERSE]) {
+                    const int initial_skpr_gain = ramp_speaker_gain(adev, false /*ramp_up*/, -1);
+                    select_devices(adev, usecase->id);
+                    if (initial_skpr_gain != -EINVAL) {
+                        ramp_speaker_gain(adev, true /*ramp_up*/, initial_skpr_gain);
+                    }
                 } else {
-                    mixer_path = platform_get_snd_device_name(SND_DEVICE_OUT_SPEAKER);
-                    audio_route_apply_and_update_path(adev->audio_route, mixer_path);
+                    const char *mixer_path;
+                    if (swap_channels) {
+                        mixer_path = platform_get_snd_device_name(SND_DEVICE_OUT_SPEAKER_REVERSE);
+                        audio_route_apply_and_update_path(adev->audio_route, mixer_path);
+                    } else {
+                        mixer_path = platform_get_snd_device_name(SND_DEVICE_OUT_SPEAKER);
+                        audio_route_apply_and_update_path(adev->audio_route, mixer_path);
+                    }
                 }
                 break;
             }
